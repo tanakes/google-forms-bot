@@ -2,23 +2,21 @@ name: Submit Google Form
 
 on:
   schedule:
-    - cron: '3 17 * * *'
-    - cron: '57 21 * * *'
-    - cron: '17 11 * * *'
-    - cron: '32 14 * * *'
-    - cron: '48 17 * * *'
+    # Тестовый запуск: поставьте время на 5 минут вперёд от текущего UTC
+    # Например, сейчас 17:50 UTC → поставьте 55 17 * * * (17:55)
+    - cron: '10 17 * * *'   # ЗАМЕНИТЕ НА АКТУАЛЬНОЕ ВРЕМЯ
   workflow_dispatch:
 
 jobs:
   submit:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # разрешаем запись в репозиторий
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # используем автоматический токен
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -36,7 +34,6 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add state.json
-          # Проверяем, есть ли изменения
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit"
           else
