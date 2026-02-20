@@ -3,7 +3,7 @@ name: Submit Google Form
 on:
   schedule:
     - cron: '10 17 * * *'
-    - cron: '5 9 * * *'
+    - cron: '57 21 * * *'
     - cron: '17 11 * * *'
     - cron: '32 14 * * *'
     - cron: '48 17 * * *'
