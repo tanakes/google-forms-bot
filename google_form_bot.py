@@ -6,7 +6,7 @@ import os
 
 URL = "https://docs.google.com/forms/d/e/1FAIpQLSehIJDYbGUUvTEWOiq6WQQ_eV250l7B4-f8VHz8AGdzxucFoQ/formResponse"
 TOTAL_RESPONSES = 104
-STATE_FILE = "state.json"
+STATE_FILE = "v2_state.json"
 
 # --- Варианты ответов ---
 options_map = {
@@ -366,4 +366,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
