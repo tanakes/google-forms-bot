@@ -8,7 +8,7 @@ URL = "https://docs.google.com/forms/d/e/1FAIpQLSce7JvrJXbHWyWDoJmInk5A4sY5F_-4s
 TOTAL_RESPONSES = 104
 STATE_FILE = "state.json"
 
-# --- Все ваши исходные данные ---
+# --- Варианты ответов ---
 options_map = {
     "entry.457041491": ["16 лет и младше", "17–18 лет", "19–20 лет", "21–22 года", "23 года и старше"],
     "entry.900081255": ["Мужской", "Женский"],
@@ -119,98 +119,156 @@ def format_text_randomly(text):
             text += "."
     return text
 
-def generate_one_response(index, english_indices, categorized):
-    data = {"fvv": "1"}
+def generate_profile(index, english_indices):
+    """
+    Генерирует согласованный профиль респондента.
+    Возвращает словарь с ключами:
+        age, gender, region, occupation, native_lang, school_lang, uni_lang
+    """
+    profile = {}
 
-    # 1. Возраст
-    age_weights = [0.05, 0.45, 0.40, 0.05, 0.05]
-    data["entry.457041491"] = random.choices(options_map["entry.457041491"], weights=age_weights, k=1)[0]
+    # --- Род занятий (с учётом возраста) ---
+    # Сначала выбираем род занятий с общими весами
+    occ_weights = [0.10, 0.85, 0.05]  # школа, универ, работа
+    occupation = random.choices(options_map["entry.1467051264"], weights=occ_weights, k=1)[0]
+    profile['occupation'] = occupation
 
-    # 2. Пол
-    data["entry.900081255"] = random.choice(options_map["entry.900081255"])
+    # --- Возраст (согласован с родом занятий) ---
+    age_options = options_map["entry.457041491"]
+    if occupation == "Школа":
+        age_weights = [0.3, 0.7, 0.0, 0.0, 0.0]  # только до 18 лет
+    elif occupation == "Университет / Вуз":
+        age_weights = [0.0, 0.3, 0.5, 0.15, 0.05]  # 17-23+
+    else:  # Работа
+        age_weights = [0.0, 0.0, 0.2, 0.3, 0.5]   # в основном старше 21
+    profile['age'] = random.choices(age_options, weights=age_weights, k=1)[0]
 
-    # 3. Регион
+    # --- Пол (без ограничений) ---
+    profile['gender'] = random.choice(options_map["entry.900081255"])
+
+    # --- Регион (с сохранением прежних весов) ---
     regions = options_map["entry.2072137170"]
     region_weights = [0.25, 0.35, 0.20] + [0.20/17] * (len(regions)-3)
-    data["entry.2072137170"] = random.choices(regions, weights=region_weights, k=1)[0]
+    profile['region'] = random.choices(regions, weights=region_weights, k=1)[0]
 
-    # 4. Род занятий
-    occupation_weights = [0.10, 0.85, 0.05]
-    data["entry.1467051264"] = random.choices(options_map["entry.1467051264"], weights=occupation_weights, k=1)[0]
-
-    # 6. Родной язык
+    # --- Родной язык ---
     if index in english_indices:
         native_lang = "Английский"
     else:
+        # Можно добавить зависимость от региона, но для простоты оставим общие веса
         native_lang = random.choices(["Казахский", "Русский"], weights=[0.65, 0.35], k=1)[0]
-    data["entry.997831765"] = native_lang
+    profile['native_lang'] = native_lang
 
-    # 7. Язык в школе
+    # --- Язык в школе (зависит от родного языка) ---
     if native_lang == "Казахский":
-        school_weights = [0.80, 0.15, 0.05]
+        # С вероятностью 0.85 казахский, 0.1 русский, 0.05 английский (спецшколы)
+        school_lang = random.choices(
+            ["Казахский", "Русский", "Английский"],
+            weights=[0.85, 0.10, 0.05], k=1)[0]
     elif native_lang == "Русский":
-        school_weights = [0.10, 0.85, 0.05]
-    else:
-        school_weights = [0.25, 0.25, 0.50]
-    data["entry.2016190063"] = random.choices(options_map["entry.2016190063"], weights=school_weights, k=1)[0]
+        school_lang = random.choices(
+            ["Казахский", "Русский", "Английский"],
+            weights=[0.10, 0.85, 0.05], k=1)[0]
+    else:  # Английский
+        school_lang = random.choices(
+            ["Казахский", "Русский", "Английский"],
+            weights=[0.05, 0.10, 0.85], k=1)[0]
+    profile['school_lang'] = school_lang
 
-    # 5. Язык обучения
-    if data["entry.1467051264"] == "Университет / Вуз":
-        uni_lang_weights = [0.15, 0.15, 0.60, 0.10]
-    else:
-        uni_lang_weights = [0.40, 0.40, 0.10, 0.10]
-    data["entry.2049384046"] = random.choices(options_map["entry.2049384046"], weights=uni_lang_weights, k=1)[0]
+    # --- Язык обучения (для учёбы/работы) ---
+    if occupation == "Университет / Вуз":
+        # Студенты могут учиться на разных языках
+        if native_lang == "Казахский":
+            uni_weights = [0.30, 0.10, 0.40, 0.20]  # каз, рус, англ, смеш
+        elif native_lang == "Русский":
+            uni_weights = [0.10, 0.35, 0.35, 0.20]
+        else:  # Английский
+            uni_weights = [0.05, 0.05, 0.70, 0.20]
+    elif occupation == "Школа":
+        # Школьники учатся на языке школы (обычно совпадает с school_lang)
+        # Но могут быть смешанные классы, поэтому добавим вариант "Смешанный"
+        if school_lang == "Казахский":
+            uni_weights = [0.90, 0.02, 0.01, 0.07]
+        elif school_lang == "Русский":
+            uni_weights = [0.02, 0.90, 0.01, 0.07]
+        else:  # Английский
+            uni_weights = [0.01, 0.01, 0.90, 0.08]
+    else:  # Работа
+        # Для работающих язык общения может быть любым, чаще смешанный или русский/казахский
+        uni_weights = [0.30, 0.40, 0.10, 0.20]
+    profile['uni_lang'] = random.choices(options_map["entry.2049384046"], weights=uni_weights, k=1)[0]
 
-    is_studying_foreign = data["entry.2049384046"] != native_lang and data["entry.2049384046"] != "Смешанный (несколько языков)"
+    return profile
 
-    # 8. Легкость понимания
+def generate_one_response(index, english_indices, categorized):
+    # Генерируем согласованный профиль
+    profile = generate_profile(index, english_indices)
+
+    data = {"fvv": "1"}
+
+    # Заполняем ответы на основе профиля
+    data["entry.457041491"] = profile['age']
+    data["entry.900081255"] = profile['gender']
+    data["entry.2072137170"] = profile['region']
+    data["entry.1467051264"] = profile['occupation']
+    data["entry.997831765"] = profile['native_lang']
+    data["entry.2016190063"] = profile['school_lang']
+    data["entry.2049384046"] = profile['uni_lang']
+
+    # Флаг обучения на неродном языке (исключая полностью совпадающий)
+    native = profile['native_lang']
+    uni = profile['uni_lang']
+    is_studying_foreign = (uni != native) and (uni != "Смешанный (несколько языков)")
+
+    # --- 8. Легкость понимания ---
     if is_studying_foreign:
         understanding_weights = [0.05, 0.15, 0.45, 0.25, 0.10]
     else:
         understanding_weights = [0.0, 0.05, 0.15, 0.40, 0.40]
     data["entry.1708145665"] = random.choices(options_map["entry.1708145665"], weights=understanding_weights, k=1)[0]
 
-    # 9. Трудности
-    if int(data["entry.1708145665"]) >= 4:
+    # --- 9. Трудности (множественный выбор) ---
+    understanding_score = int(data["entry.1708145665"])
+    if understanding_score >= 4:
         data["entry.1452720691"] = "Трудностей нет, я всё понимаю."
     else:
-        diffs = options_map["entry.1452720691"][:-1]
+        diffs = options_map["entry.1452720691"][:-1]  # все, кроме последнего
         chosen_diffs = random.sample(diffs, k=random.randint(1, 2))
         data["entry.1452720691"] = chosen_diffs
 
-    # 10. Действие
+    # --- 10. Действие ---
     action_weights = [0.45, 0.30, 0.15, 0.10]
     data["entry.1794521284"] = random.choices(options_map["entry.1794521284"], weights=action_weights, k=1)[0]
 
-    # 11. Код-свитчинг
-    if is_studying_foreign or data["entry.2049384046"] == "Смешанный (несколько языков)":
+    # --- 11. Код-свитчинг ---
+    if is_studying_foreign or uni == "Смешанный (несколько языков)":
         cs_weights = [0.60, 0.30, 0.10]
     else:
         cs_weights = [0.20, 0.40, 0.40]
     data["entry.286483656"] = random.choices(options_map["entry.286483656"], weights=cs_weights, k=1)[0]
 
-    # 12. Помощь от перехода
+    # --- 12. Помощь от перехода ---
     if is_studying_foreign:
         help_weights = [0.65, 0.25, 0.10]
     else:
         help_weights = [0.20, 0.30, 0.50]
     data["entry.737822750"] = random.choices(options_map["entry.737822750"], weights=help_weights, k=1)[0]
 
-    # 13. Усилия
+    # --- 13. Усилия ---
     if is_studying_foreign:
         effort_weights = [0.05, 0.20, 0.40, 0.25, 0.10]
     else:
         effort_weights = [0.60, 0.20, 0.10, 0.05, 0.05]
     data["entry.331049506"] = random.choices(options_map["entry.331049506"], weights=effort_weights, k=1)[0]
 
-    # 14. На каком легче
+    # --- 14. На каком языке легче ---
     if is_studying_foreign:
         easier_weights = [0.40, 0.15, 0.35, 0.10]
     else:
         easier_weights = [0.80, 0.05, 0.05, 0.10]
     data["entry.1295596769"] = random.choices(options_map["entry.1295596769"], weights=easier_weights, k=1)[0]
 
-    # 15. Выбор фразы
+    # --- 15. Выбор фразы (с учётом ответа на 14) ---
     choice_14 = data["entry.1295596769"]
     if "На родном языке" in choice_14:
         target_cat = 'native'
